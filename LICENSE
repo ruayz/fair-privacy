@@ -24,11 +24,11 @@ SOFTWARE.
 
 This project includes code from the following third-party sources:
 
-1. MIT License
+- MIT License
    Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
    Source: https://github.com/privacytrustlab/ml_privacy_meter
 
-2. Apache License 2.0
+- Apache License 2.0
    Copyright 2023 Layer 6 AI
    Source: https://github.com/layer6ai-labs/fair-dp
 
