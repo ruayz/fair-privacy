@@ -15,12 +15,12 @@ audit: # Configurations for auditing
 
 train: # Configuration for training
   data_size: 100000
-  model_name: LR # String for indicating the model type. We support CNN, wrn28-1, wrn28-2, wrn28-10, vgg16, mlp and speedyresnet (requires cuda). More model types can be added in model.py.
+  model_name: MLP # String for indicating the model type. We support CNN, wrn28-1, wrn28-2, wrn28-10, vgg16, mlp and speedyresnet (requires cuda). More model types can be added in model.py.
   device: cuda:6 # String for indicating the device we want to use for training models.
   batch_size: 256
   learning_rate: 0.1
   weight_decay: 0
-  epochs: 50
+  epochs: 20
   optimizer: SGD
    # train method
   method: dpsgdf

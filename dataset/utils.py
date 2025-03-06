@@ -17,7 +17,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader, Subset
 from transformers import AutoTokenizer
 
-from dataset import TabularDataset, TextDataset, UTKDataset, GroupLabelDataset, load_agnews
+from dataset import TabularDataset, UTKDataset, GroupLabelDataset
 from dataset.preprocess import *
 from trainers.fast_train import get_batches, load_cifar10_data
 

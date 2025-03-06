@@ -20,7 +20,7 @@ train: # Configuration for training
   batch_size: 256
   learning_rate: 0.1
   weight_decay: 0
-  epochs: 50
+  epochs: 20
   optimizer: SGD
    # train method
   method: dpsgd

@@ -28,7 +28,7 @@ torch.backends.cudnn.benchmark = True
 def main(device, method, num_rep=1, scale=None):
     # configs = f"configs/raceface/raceface_{method}.yaml"
     # configs = f"configs/mnist/mnist_{method}.yaml"
-    configs = f"configs/tabular/bank/bank_{method}.yaml"
+    configs = f"configs/tabular/adult/adult_{method}.yaml"
     with open(configs, "rb") as f:
         configs = yaml.load(f, Loader=yaml.Loader)
 
@@ -99,8 +99,8 @@ def main(device, method, num_rep=1, scale=None):
     )
 
 if __name__ == "__main__":
-    method = "dpsgdf"
-    device = "cuda:6"
+    method = "dpsgd"
+    device = "cuda:5"
     num_rep = 1 
     # scale = 4
     main(device, method, num_rep)
