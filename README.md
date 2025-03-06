@@ -3,11 +3,11 @@
 This repository contains the code developed for the ICML submission on the topic of fairness and privacy in machine learning. 
 
 
-## Requirements
+## Requirement
 
 To install the dependencies, run the following command:
 ```bash
-pip install -r requirements.txt
+pip install -r requirement.txt
 ```
 
 ## Main File
