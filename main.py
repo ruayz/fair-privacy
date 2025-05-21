@@ -139,7 +139,7 @@ def main(device, method, seed="", scale=None):
 if __name__ == "__main__":
     method = "dpsgd"
     device = "cuda:6"
-    scale = 5
+    scale = 2
     main(device, method)
 
     # random_seeds = [1, 12, 123, 1234]
