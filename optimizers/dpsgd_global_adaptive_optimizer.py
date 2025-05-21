@@ -1,6 +1,3 @@
-# Copyright 2023 Layer 6 AI
-# Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
-# Full license in LICENSE file.
 
 import torch
 import opacus

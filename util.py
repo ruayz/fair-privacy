@@ -1,7 +1,3 @@
-# Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
-# Licensed under the MIT License. See LICENSE file for details.
-
-"""This file contains information about the utility functions."""
 
 import logging
 import random

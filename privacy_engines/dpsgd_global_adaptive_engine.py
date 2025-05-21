@@ -1,6 +1,3 @@
-# Copyright 2023 Layer 6 AI
-# Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
-# Full license in LICENSE file.
 
 # adapted from opacus/privacy_engine.py
 # https://github.com/pytorch/opacus/blob/030b723fb89aabf3cde663018bb63e5bb95f197a/opacus/privacy_engine.py

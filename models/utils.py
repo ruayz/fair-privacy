@@ -1,7 +1,3 @@
-# Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
-# Licensed under the MIT License. See LICENSE file for details.
-
-"""This module defines functions for model handling, including model definition, loading, and training."""
 
 import copy
 import json

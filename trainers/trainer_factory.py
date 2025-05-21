@@ -1,5 +1,3 @@
-# Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
-# Licensed under the MIT License. See LICENSE file for details.
 
 from .trainer import RegularTrainer, DpsgdTrainer, DpsgdSTrainer, DpsgdFTrainer, DpsgdGlobalTrainer, DpsgdGlobalAdaptiveTrainer
 from .default_trainer import get_optimizer

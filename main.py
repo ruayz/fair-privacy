@@ -1,7 +1,3 @@
-# Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
-# Licensed under the MIT License. See LICENSE file for details.
-
-"""This file is the main entry point for running the privacy auditing tool."""
 
 import argparse
 import math
@@ -33,8 +29,8 @@ def main(device, method, seed="", scale=None):
     parser.add_argument(
         "--cf",
         type=str,
-        # default=f"configs/mnist/mnist_{method}.yaml",
-        default=f"configs/raceface/raceface_{method}.yaml",
+        default=f"configs/mnist/mnist_{method}.yaml",
+        # default=f"configs/raceface/raceface_{method}.yaml",
         # default=f"configs/tabular/adult/adult_{method}.yaml",
         help="Path to the configuration YAML file.",
     )
@@ -133,13 +129,6 @@ def main(device, method, seed="", scale=None):
         attack_algorithm=configs["audit"]["algorithm"],
     )
 
-    # if configs["train"]["num_groups"] == 2:
-    #     pro_attributes = np.array([(item[1], item[2]) for item in dataset])
-    #     np.save(f"{directories['report_dir']}/pro_attributes.npy", pro_attributes)
-    # else:
-    #     sample_labels = np.array([(i, item[1]) for i, item in enumerate(dataset)])
-    #     np.save(f"{directories["subdata_dir"]}sample_labels.npy", sample_labels)
-
     loss_scores = mia_score_list 
     memberships = membership_list
     num_group = configs["train"]["num_groups"]
@@ -151,8 +140,8 @@ if __name__ == "__main__":
     method = "dpsgd"
     device = "cuda:6"
     scale = 5
-    # main(device, method)
+    main(device, method)
 
-    random_seeds = [1, 12, 123, 1234]
-    # for seed in random_seeds:
-    main(device, method, seed=random_seeds[3])
+    # random_seeds = [1, 12, 123, 1234]
+    # # for seed in random_seeds:
+    #     main(device, method, seed=seed)

@@ -1,6 +1,5 @@
 .idea*
 __pycache__/
 data/
-demo*/
 exp*/
 runs*/

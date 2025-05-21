@@ -1,6 +1,3 @@
-# Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
-# Licensed under the MIT License. See LICENSE file for details.
-
 from typing import Any
 
 import numpy as np

@@ -1,7 +1,3 @@
-# Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
-# Licensed under the MIT License. See LICENSE file for details.
-
-"""This file contains functions for training and testing the model."""
 
 import pdb
 import time

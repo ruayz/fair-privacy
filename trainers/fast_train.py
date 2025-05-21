@@ -1,17 +1,4 @@
-# Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
-# Licensed under the MIT License. See LICENSE file for details.
 
-# The code is modified from https://github.com/tysam-code/hlb-CIFAR10
-# Note: The one change we need to make if we're in Colab is to uncomment this below block.
-# If we are in an ipython session or a notebook, clear the state to avoid bugs
-"""
-try:
-  _ = get_ipython().__class__.__name__
-  ## we set -f below to avoid prompting the user before clearing the notebook state
-  %reset -f
-except NameError:
-  pass ## we're still good
-"""
 import copy
 import math
 from functools import partial
