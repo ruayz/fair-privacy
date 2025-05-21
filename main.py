@@ -1,6 +1,8 @@
 # Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
 # Licensed under the MIT License. See LICENSE file for details.
 
+"""This file is the main entry point for running the privacy auditing tool."""
+
 import argparse
 import math
 import time
@@ -8,11 +10,10 @@ import time
 import torch
 import yaml
 import numpy as np
-import pandas as pd
 
-from audit import get_average_audit_results, audit_models, audit_records, sample_auditing_dataset
+from audit import get_average_audit_results, audit_models, audit_records, sample_auditing_dataset, exp_all_acc, exp_all_avg_acc, exp_all_group_avg_acc
 from get_signals import get_model_signals
-from models.utils import load_models, train_models, split_dataset_for_training, split_samples_for_training
+from models.utils import load_models, train_models, split_dataset_for_training
 from util import (
     check_configs,
     setup_log,
@@ -26,13 +27,15 @@ from util import (
 torch.backends.cudnn.benchmark = True
 
 
-def main(device, method, sample_idxs=None, scale=None):
+def main(device, method, seed="", scale=None):
     # Parse arguments
     parser = argparse.ArgumentParser(description="Run individual privacy audit.")
     parser.add_argument(
         "--cf",
         type=str,
-        default=f"configs/mnist/mnist_{method}.yaml",
+        # default=f"configs/mnist/mnist_{method}.yaml",
+        default=f"configs/raceface/raceface_{method}.yaml",
+        # default=f"configs/tabular/adult/adult_{method}.yaml",
         help="Path to the configuration YAML file.",
     )
     args = parser.parse_args()
@@ -45,16 +48,19 @@ def main(device, method, sample_idxs=None, scale=None):
     check_configs(configs)
     configs["train"]["device"] = device
     configs["audit"]["device"] = device
+    if seed != "" :
+        configs["run"]["random_seed"] = seed
     if scale is not None:
         method = f"{method}_{scale}"
+        configs["train"]["scale"] = scale
 
     # Initialize seeds for reproducibility
     initialize_seeds(configs["run"]["random_seed"])
 
     # Create necessary directories
     subdata_dir = configs["run"]["log_dir"] 
-    log_dir = f"{configs["run"]["log_dir"]}{configs["train"]["model_name"]}/{method}"
-    log_dir += f"/eps{int(configs["train"]["epsilon"])}"
+    log_dir = f'{configs["run"]["log_dir"]}{configs["train"]["model_name"]}/{method}'
+    log_dir += f'/eps{int(configs["train"]["epsilon"])}_{seed}'
     configs["run"]["log_dir"] = log_dir
     directories = {
         "log_dir": log_dir,
@@ -78,13 +84,14 @@ def main(device, method, sample_idxs=None, scale=None):
     logger.info("Loading dataset took %0.5f seconds", time.time() - baseline_time)
     # subset of dataset
     if configs["train"]["data_size"] < len(dataset):
-        dataset = load_subset_dataset(configs, dataset, f"{directories["subdata_dir"]}", logger)
+        dataset = load_subset_dataset(configs, dataset, f'{directories["subdata_dir"]}', logger)
         logger.info("Loading sub-dataset took %0.5f seconds", time.time() - baseline_time)
 
     # Define experiment parameters
     num_experiments = configs["run"]["num_experiments"]
     num_models = configs["audit"]["num_models"]
-    num_model_pairs = max(math.ceil(num_experiments / 2.0), int(num_models/2))
+    num_reference_models = int(num_models/2 - 1)
+    num_model_pairs = max(math.ceil(num_experiments / 2.0), num_reference_models + 1)
 
     # Load or train models
     baseline_time = time.time()
@@ -93,11 +100,8 @@ def main(device, method, sample_idxs=None, scale=None):
     )
     if models_list is None:
         # Split dataset for training two models per pair
-        # data_splits, memberships = split_dataset_for_training(
-        #     len(dataset), num_model_pairs, ratio=0.5
-        # )
-        data_splits, memberships = split_samples_for_training(
-            len(dataset), num_model_pairs, sample_idxs
+        data_splits, memberships = split_dataset_for_training(
+            len(dataset), num_model_pairs, ratio=0.5
         )
         models_list = train_models(
             log_dir, dataset, data_splits, memberships, configs, logger
@@ -119,7 +123,6 @@ def main(device, method, sample_idxs=None, scale=None):
     target_model_indices = list(range(num_models)) # for all pair models
 
     # shape of mia_score_list: (n, m) n=(num_models, m=len(auditing_dataset)
-    num_reference_models = int(num_models/2 - 1)
     mia_score_list, membership_list = audit_records(
         f"{directories['report_dir']}",
         target_model_indices,
@@ -137,11 +140,19 @@ def main(device, method, sample_idxs=None, scale=None):
     #     sample_labels = np.array([(i, item[1]) for i, item in enumerate(dataset)])
     #     np.save(f"{directories["subdata_dir"]}sample_labels.npy", sample_labels)
 
+    loss_scores = mia_score_list 
+    memberships = membership_list
+    num_group = configs["train"]["num_groups"]
+    exp_all_acc(f"{directories['report_dir']}/loss", loss_scores, memberships, dataset, num_group)
+    exp_all_avg_acc(f"{directories['report_dir']}/loss", loss_scores, memberships, dataset, num_group)
+    exp_all_group_avg_acc(f"{directories['report_dir']}/loss", loss_scores, memberships, dataset, num_group)
 
 if __name__ == "__main__":
-    log_dir = 'exp/demo_mnist_compare/'
-    samples = pd.read_csv(f"{log_dir}sample_idx.txt", sep=',')
-    method = "regular"
+    method = "dpsgd"
     device = "cuda:6"
     scale = 5
-    main(device, method, sample_idxs=samples["idx"].to_numpy())
+    # main(device, method)
+
+    random_seeds = [1, 12, 123, 1234]
+    # for seed in random_seeds:
+    main(device, method, seed=random_seeds[3])

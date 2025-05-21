@@ -148,27 +148,20 @@ def run_record_rmia(
     """
     Attack a target model using the RMIA attack with the help of offline reference models.
 
-    Args:
-        target_model_idx (int): Index of the target model.
-        all_signals (np.ndarray): Softmax value of all samples in the target model.
-        all_memberships (np.ndarray): Membership matrix for all models.
-        num_reference_models (int): Number of reference models used for the attack.
-        offline_a (float): Coefficient offline_a is used to approximate p(x) using P_out in the offline setting.
-
     Returns:
         np.ndarray: MIA score for all samples (a larger score indicates higher chance of being member).
     """
     target_signals = all_signals[:, target_model_idx]
-    # out_signals, in_signals = get_rmia_out_and_in_signals(
-    #     all_signals, all_memberships, target_model_idx, num_reference_models
-    # )
-    out_signals = get_rmia_out_signals(
+    out_signals, in_signals = get_rmia_out_and_in_signals(
         all_signals, all_memberships, target_model_idx, num_reference_models
     )
+    # out_signals = get_rmia_out_signals(
+    #     all_signals, all_memberships, target_model_idx, num_reference_models
+    # )
     mean_out_x = np.mean(out_signals, axis=1) # avg of each row
-    # mean_in_x = np.mean(in_signals, axis=1)
-    # mean_x = (mean_out_x + mean_in_x) / 2
-    mean_x = mean_out_x
+    mean_in_x = np.mean(in_signals, axis=1)
+    mean_x = (mean_out_x + mean_in_x) / 2
+    # mean_x = mean_out_x
     #mean_x = (1 + offline_a) / 2 * mean_out_x + (1 - offline_a) / 2
 
     mean_x = np.clip(mean_x, 1e-10, None)  

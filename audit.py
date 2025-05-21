@@ -261,7 +261,7 @@ def audit_records(
                 # )
                 #logger.info(f"The best offline_a is %0.1f", offline_a)
                 offline_a = 0.5
-                mia_scores = run_record_rmia(
+                mia_scores = run_rmia(
                     target_model_idx,
                     all_signals,
                     all_memberships,
@@ -595,6 +595,7 @@ def exp_worst_eps(scores, memberships):
                 all_acc[idx] = exp_acc
                 pbar.update(1)
     index = np.argmax(all_acc)
+    print(max(all_acc))
     eps = compute_eps_for_data(scores[index], memberships[index], alpha=0.05, delta=1e-5)
     return eps
 
@@ -640,7 +641,7 @@ def get_model_best_acc(scores, labels):
     threshs = np.sort(np.unique(scores))
     acc_list = [0] * len(threshs)
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=64) as executor, \
+    with concurrent.futures.ProcessPoolExecutor(max_workers=32) as executor, \
                 tqdm(total=len(threshs), leave=False) as pbar:
 
             futures = {}
@@ -667,7 +668,7 @@ def get_model_group_best_acc(scores, labels, num_group, data_class):
         threshs = np.sort(np.unique(s))
         acc_list = [0] * len(threshs)
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=64) as executor, \
+        with concurrent.futures.ProcessPoolExecutor(max_workers=32) as executor, \
             tqdm(total=len(threshs), leave=False) as pbar:
 
             futures = {}
@@ -705,7 +706,7 @@ def exp_all_acc(report_dir, scores, memberships, dataset, num_group=10):
         # for idx, (s, m) in enumerate(zip(scores, memberships)):
         #     acc = get_best_acc(s, m)
         #     all_acc[dataset[idx][1]].append([dataset[idx][0], acc])
-        with concurrent.futures.ProcessPoolExecutor(max_workers=64) as executor, \
+        with concurrent.futures.ProcessPoolExecutor(max_workers=32) as executor, \
                 tqdm(total=len(scores), leave=False) as pbar:
 
             futures = {}
@@ -719,7 +720,7 @@ def exp_all_acc(report_dir, scores, memberships, dataset, num_group=10):
                 #     index = dataset[idx][1]*2 + dataset[idx][2]
                 #     all_acc[index].append(exp_acc)
                 # else:
-                if num_group == 2:
+                if num_group == 2 or num_group == 5:
                     all_acc[dataset[idx][2]].append(exp_acc)
                 else:
                     all_acc[dataset[idx][1]].append(exp_acc)
@@ -755,7 +756,7 @@ def exp_all_avg_acc(report_dir, scores, memberships, dataset, num_group=10):
         scores = scores.T
         memberships = memberships.T
         all_avg_acc = [[] for _ in range(num_group)]
-        with concurrent.futures.ProcessPoolExecutor(max_workers=64) as executor, \
+        with concurrent.futures.ProcessPoolExecutor(max_workers=32) as executor, \
             tqdm(total=len(scores), leave=False) as pbar:
 
             futures = {}
@@ -764,7 +765,11 @@ def exp_all_avg_acc(report_dir, scores, memberships, dataset, num_group=10):
             for future in concurrent.futures.as_completed(futures):
                 exp_acc = future.result()
                 idx = futures[future]
-                all_avg_acc[dataset[idx][1]].append(exp_acc)
+                # all_avg_acc[dataset[idx][1]].append(exp_acc)
+                if num_group == 2 or num_group == 5:
+                    all_avg_acc[dataset[idx][2]].append(exp_acc)
+                else:
+                    all_avg_acc[dataset[idx][1]].append(exp_acc)
         with open(path, 'wb') as f:
             pickle.dump(all_avg_acc, f)
     return all_avg_acc
@@ -777,7 +782,10 @@ def exp_all_group_avg_acc(report_dir, scores, memberships, dataset, num_group=10
     
     data_class = []
     for data in dataset:
-        data_class.append(data[1])
+        if num_group == 2 or num_group == 5:
+            data_class.append(data[2])
+        else:
+            data_class.append(data[1])
     data_class = np.array(data_class)
 
     if os.path.exists(path):
@@ -801,7 +809,7 @@ def exp_all_group_avg_acc(report_dir, scores, memberships, dataset, num_group=10
         scores = scores.T
         memberships = memberships.T
         all_avg_acc = [[] for _ in range(num_group)]
-        with concurrent.futures.ProcessPoolExecutor(max_workers=64) as executor, \
+        with concurrent.futures.ProcessPoolExecutor(max_workers=32) as executor, \
             tqdm(total=len(scores), leave=False) as pbar:
 
             futures = {}
@@ -811,7 +819,12 @@ def exp_all_group_avg_acc(report_dir, scores, memberships, dataset, num_group=10
             for future in concurrent.futures.as_completed(futures):
                 exp_acc = future.result()
                 idx = futures[future]
-                all_avg_acc[dataset[idx][1]].append(exp_acc)
+                # all_avg_acc[dataset[idx][1]].append(exp_acc)
+                if num_group == 2 or num_group == 5:
+                    all_avg_acc[dataset[idx][2]].append(exp_acc)
+                else:
+                    all_avg_acc[dataset[idx][1]].append(exp_acc)
         with open(path, 'wb') as f:
             pickle.dump(all_avg_acc, f)
     return all_avg_acc
+

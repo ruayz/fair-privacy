@@ -1,17 +1,18 @@
 # Copyright (c) 2020 Data Privacy and Trustworthy Machine Learning Research Lab
 # Licensed under the MIT License. See LICENSE file for details.
 
-from .trainer import RegularTrainer, DpsgdTrainer, DpsgdFTrainer, DpsgdGlobalTrainer, DpsgdGlobalAdaptiveTrainer, DpsgdFGlobalTrainer, DpsgdF_GlobalAdaptiveTrainer
+from .trainer import RegularTrainer, DpsgdTrainer, DpsgdSTrainer, DpsgdFTrainer, DpsgdGlobalTrainer, DpsgdGlobalAdaptiveTrainer
 from .default_trainer import get_optimizer
 from opacus import PrivacyEngine
 from opacus.validators import ModuleValidator
 import sys
 
+from privacy_engines.dpsgd_s_engine import DPSGDS_PrivacyEngine
 from privacy_engines.dpsgd_f_engine import DPSGDF_PrivacyEngine
-from privacy_engines.dpsgd_global_adaptive_engine import DPSGDGlobalAdaptivePrivacyEngine
 from privacy_engines.dpsgd_global_engine import DPSGDGlobalPrivacyEngine
-from privacy_engines.dpsgd_f_global_engine import DPSGDFGlobal_PrivacyEngine
-from privacy_engines.dpsgd_f_global_adaptive_engine import DPSGDFGlobal_Adaptive_PrivacyEngine
+from privacy_engines.dpsgd_global_adaptive_engine import DPSGDGlobalAdaptivePrivacyEngine
+# from privacy_engines.dpsgd_f_global_engine import DPSGDFGlobal_PrivacyEngine
+# from privacy_engines.dpsgd_f_global_adaptive_engine import DPSGDFGlobal_Adaptive_PrivacyEngine
 
 
 def create_trainer(
@@ -85,6 +86,30 @@ def create_trainer(
             logdir,
             **kwargs
         )
+    elif configs["method"] == "dpsgds":
+        privacy_engine = DPSGDS_PrivacyEngine(accountant="rdp")
+        model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
+            module=model,
+            optimizer=optimizer,
+            data_loader=train_loader,
+            target_epsilon=configs['epsilon'],
+            target_delta=float(configs["delta"]),
+            epochs=configs["epochs"],
+            max_grad_norm=0  # this parameter is not applicable for DPSGD-S
+        )
+        scale = configs.get("scale", 2)
+        trainer = DpsgdSTrainer(
+            model,
+            optimizer,
+            privacy_engine,
+            train_loader,
+            device,
+            logdir,
+            base_max_grad_norm=configs["base_max_grad_norm"],  # C0
+            counts_noise_multiplier=configs["counts_noise_multiplier"],  # noise scale 
+            scale=scale,
+            **kwargs
+        )
     elif configs["method"] == "dpsgdf":
         privacy_engine = DPSGDF_PrivacyEngine(accountant="rdp")
         model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
@@ -94,7 +119,7 @@ def create_trainer(
             target_epsilon=configs['epsilon'],
             target_delta=float(configs["delta"]),
             epochs=configs["epochs"],
-            max_grad_norm=0  # this parameter is not applicable for DPSGD-F
+            max_grad_norm=0  # this parameter is not applicable for DPSGD-S
         )
         trainer = DpsgdFTrainer(
             model,
@@ -128,29 +153,6 @@ def create_trainer(
             strict_max_grad_norm=configs["strict_max_grad_norm"],
             **kwargs
         )
-    elif configs["method"] == "dpsgdfg":
-        privacy_engine = DPSGDFGlobal_PrivacyEngine(accountant="rdp")
-        model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
-            module=model,
-            optimizer=optimizer,
-            data_loader=train_loader,
-            target_epsilon=configs['epsilon'],
-            target_delta=float(configs["delta"]),
-            epochs=configs["epochs"],
-            max_grad_norm=0  # this parameter is not applicable for DPSGD-F
-        )
-        trainer = DpsgdFGlobalTrainer(
-            model,
-            optimizer,
-            privacy_engine,
-            train_loader,
-            device,
-            logdir,
-            strict_max_grad_norm=configs["strict_max_grad_norm"],
-            base_max_grad_norm=configs["base_max_grad_norm"],  # C0
-            counts_noise_multiplier=configs["counts_noise_multiplier"],  # noise scale 
-            **kwargs
-        )
     elif configs["method"] == "dpsgdga":
         privacy_engine = DPSGDGlobalAdaptivePrivacyEngine(accountant="rdp")
         model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
@@ -169,32 +171,6 @@ def create_trainer(
             train_loader,
             device,
             logdir,
-            strict_max_grad_norm=configs["strict_max_grad_norm"],
-            bits_noise_multiplier=configs["bits_noise_multiplier"],
-            lr_Z=configs["lr_Z"],
-            threshold=configs["threshold"],
-            **kwargs
-        )
-    elif configs["method"] == "dpsgdfga":
-        privacy_engine = DPSGDFGlobal_Adaptive_PrivacyEngine(accountant="rdp")
-        model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
-            module=model,
-            optimizer=optimizer,
-            data_loader=train_loader,
-            target_epsilon=configs['epsilon'],
-            target_delta=float(configs["delta"]),
-            epochs=configs["epochs"],
-            max_grad_norm=0  # this parameter is not applicable for DPSGD-F,
-        )
-        trainer = DpsgdF_GlobalAdaptiveTrainer(
-            model,
-            optimizer,
-            privacy_engine,
-            train_loader,
-            device,
-            logdir,
-            base_max_grad_norm=configs["base_max_grad_norm"],  # C0
-            counts_noise_multiplier=configs["counts_noise_multiplier"],  # noise scale 
             strict_max_grad_norm=configs["strict_max_grad_norm"],
             bits_noise_multiplier=configs["bits_noise_multiplier"],
             lr_Z=configs["lr_Z"],

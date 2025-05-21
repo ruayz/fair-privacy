@@ -38,7 +38,7 @@ INPUT_OUTPUT_SHAPE = {
     # "cifar100": [3, 100],
     # "purchase100": [600, 100],
     "texas100": [6169, 100],
-    "utkface": [1, 2],
+    "utkface": [1, 5],
     "raceface": [1, 5],
 }
 
@@ -214,6 +214,35 @@ def split_dataset_for_training(dataset_size, num_model_pairs, ratio):
         keep = master_keep[i * 2, :]
         train_indices = np.where(keep)[0]
         test_indices = np.where(~keep)[0]
+        data_splits.append(
+            {
+                "train": train_indices,
+                "test": test_indices,
+            }
+        )
+        data_splits.append(
+            {
+                "train": test_indices,
+                "test": train_indices,
+            }
+        )
+
+    return data_splits, master_keep
+
+def split_samples_for_training(dataset_size, num_model_pairs, sample_idxs):
+    data_splits = []
+    indices = sample_idxs
+    split_index = int(len(sample_idxs) * 0.5)
+    master_keep = np.full((2 * num_model_pairs, dataset_size), True, dtype=bool)
+
+    for i in range(num_model_pairs):
+        np.random.shuffle(indices)
+        master_keep[i * 2, indices[split_index:]] = False
+        master_keep[i * 2 + 1, indices[:split_index]] = False
+        train_keep = master_keep[i * 2, :]
+        test_keep = master_keep[i * 2 + 1, :]
+        train_indices = np.where(train_keep)[0]
+        test_indices = np.where(test_keep)[0]
         data_splits.append(
             {
                 "train": train_indices,
@@ -409,6 +438,7 @@ def prepare_models(
             "model_name": model_name,
             "learning_rate": configs["train"]["learning_rate"],
             "weight_decay": configs["train"]["weight_decay"],
+            # "clipping_bound": configs["train"]["clip_norm"],
             "model_path": f"{log_dir}/model_{model_idx}.pkl",
             "train_acc": train_acc,
             "test_acc": test_acc,
@@ -418,7 +448,7 @@ def prepare_models(
         }
 
         if outcome_fairness:
-            model_metadata_dict.update({
+            model_metadata_dict[model_idx].update({
                 "accuracy_per_group": acc_per_group,
                 "accuracy_parity": max(acc_per_group) - min(acc_per_group),
                 "demographic_parity": max(dop_per_group) - min(dop_per_group),

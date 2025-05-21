@@ -145,7 +145,7 @@ def get_dataset(dataset_name: str, data_dir: str, logger: Any, **kwargs: Any) ->
                 transforms.ToTensor(),
                 transforms.Normalize((0.49,), (0.23,))
             ])
-            all_data = UTKDataset(dataFrame, label_name="gender", transform=transform)
+            all_data = UTKDataset(dataFrame, label_name="ethnicity", transform=transform)
             with open(f"{path}.pkl", "wb") as file:
                 pickle.dump(all_data, file)
             logger.info(f"Save data to {path}.pkl")
@@ -155,7 +155,7 @@ def get_dataset(dataset_name: str, data_dir: str, logger: Any, **kwargs: Any) ->
                 transforms.ToTensor(),
                 transforms.Normalize((0.49,), (0.23,))
             ])
-            all_data = UTKDataset(dataFrame, label_name="ethnicity", transform=transform)
+            all_data = UTKDataset(dataFrame, label_name="gender", transform=transform)
             with open(f"{path}.pkl", "wb") as file:
                 pickle.dump(all_data, file)
             logger.info(f"Save data to {path}.pkl")

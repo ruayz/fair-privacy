@@ -1,6 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
-import seaborn as sns
+# import seaborn as sns
 import pandas as pd
 
 def plot_roc(fpr_list, tpr_list, roc_auc, path):
@@ -116,12 +116,12 @@ def plot_box_model(nums, all_err, path):
     plt.boxplot(all_err.T, positions=nums, showfliers=False, whis=1, widths=15)
 
     means = np.mean(all_err, axis=1)
-    plt.plot(nums, means, marker='x', linestyle='-', color='#71b7ed', label='Mean of Diff.') # 绘制折线图（均值）
+    plt.plot(nums, means, marker='x', linestyle='-', color='#71b7ed', label='Mean of Absolute Difference') # 绘制折线图（均值）
     r = [f"2R={i}" for i in nums]
     # 设置 x 轴范围
     plt.xticks(nums, r, rotation=45)
     plt.xlim([nums[0] - 20, nums[-1] + 20])
-    plt.ylabel('Difference')
+    plt.ylabel('Absolute difference')
     # plt.grid(True)
 
     # 显示网格
@@ -179,7 +179,7 @@ def plot_scatter(nums, df, group_errs, path):
         x_jitter = np.random.uniform(-0.15, 0.15, size=len(group_data))  # 添加水平抖动
         plt.scatter(i + x_jitter, group_data, alpha=0.7, s=20, color="#6dbf70")
 
-    plt.plot(positions, group_errs, marker='x', linestyle='-', color='#71b7ed', linewidth=2.5, label='Mean of Diff.') # 绘制折线图（均值）
+    plt.plot(positions, group_errs, marker='x', linestyle='-', color='#71b7ed', linewidth=2.5, label='Mean of Difference') # 绘制折线图（均值）
 
     plt.legend()
     plt.xticks(positions, range(num_group))

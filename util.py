@@ -28,7 +28,7 @@ def check_configs(configs: Dict[str, Any]) -> None:
             f"{privacy_game} is not supported. Please choose from {supported_games}"
         )
     mia_algorithm = configs["audit"]["algorithm"]
-    num_models = configs["audit"]["num_ref_models"]
+    num_models = configs["audit"]["num_models"]
     if mia_algorithm == "RMIA" and (num_models is None or num_models < 1):
         raise ValueError("The game should have at least 2 models")
 
@@ -124,16 +124,16 @@ def load_subset_dataset(configs, dataset, data_dir, logger):
         logger,
     )
 
-def get_samples_acc(sample_idx, all_acc, save=False, path=None):
-    acc = []
-    for _, row in sample_idx.iterrows():
-        group = row["group"]
-        idx = row["idx"]
-        for tuple in all_acc[group]:
-            if tuple[0] == idx:
-                acc.append(tuple[1])
+# def get_samples_acc(sample_idx, all_acc, save=False, path=None):
+#     acc = []
+#     for _, row in sample_idx.iterrows():
+#         group = row["group"]
+#         idx = row["idx"]
+#         for tuple in all_acc[group]:
+#             if tuple[0] == idx:
+#                 acc.append(tuple[1])
 
-    sample_idx["acc"] = acc
-    if save:
-        sample_idx.to_csv(path, index=False)
-    return sample_idx
+#     sample_idx["acc"] = acc
+#     if save:
+#         sample_idx.to_csv(path, index=False)
+#     return sample_idx

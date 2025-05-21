@@ -67,8 +67,16 @@ class BaseTrainer:
         self.sampled_expected_loss = sampled_expected_loss
 
     def _train_epoch(self, cosine_sim_per_epoch, expected_loss, train_loder, param_for_step=None):
-        # methods: regular, dpsgd, dpsgd-global, dpsgd-f, dpsgd-global-adapt
         criterion = torch.nn.CrossEntropyLoss()
+        '''
+            losses_per_group: loss of per group
+            all_grad_norms: grad norms(shape=num_groups x group_counts) of per group
+            all_cilp_grad_norms: cliped grad norms(shape=num_groups x group_counts) of per group
+            g_B_norms: 每个batch里所有样本梯度相加/样本量
+            bar_g_B_norms: 每个batch里裁剪后的样本梯度相加/样本量 
+            g_B_k_norms: 每个batch里, 每个组的累加梯度/该组的样本数
+            bar_g_B_k_norms: 每个batch里, 每个组裁剪后的样本梯度相加/样本量 
+        '''
         losses = []
         losses_per_group = np.zeros(self.num_groups)
         all_grad_norms = [[] for _ in range(self.num_groups)]
@@ -78,8 +86,9 @@ class BaseTrainer:
         bar_g_B_norms = []
         g_B_k_norms = [[] for _ in range(self.num_groups)]
         bar_g_B_k_norms = [[] for _ in range(self.num_groups)]
-        sum_g_D_k = [0] * self.num_groups
-        sum_bar_g_D_k = [0] * self.num_groups
+        all_Ck = []
+        # sum_g_D_k = [0] * self.num_groups
+        # sum_bar_g_D_k = [0] * self.num_groups
 
         for _batch_idx, batch in enumerate(train_loder):
             if len(batch) == 3:  
@@ -107,20 +116,21 @@ class BaseTrainer:
             elif self.method in ["dpsgd", "dpsgdg", "dpsgdga"]:
                 grad_norms, clip_grad_norms, sum_grad_vec_batch, sum_clip_grad_vec_batch = self.get_sum_grad_batch_from_vec(
                     per_sample_grads, group, clipping_bound=self.optimizer.max_grad_norm)
-            elif self.method in ["dpsgdf", "dpsgdfg", "dpsgdfga"]:
-                C = self.compute_clipping_bound_per_sample(per_sample_grads, group)
+            elif self.method in ["dpsgdf", "dpsgds"]:
+                C, Ck_B = self.compute_clipping_bound_per_sample(per_sample_grads, group)
                 grad_norms, clip_grad_norms, sum_grad_vec_batch, sum_clip_grad_vec_batch = self.get_sum_grad_batch_from_vec(
                     per_sample_grads, group, clipping_bounds=C)
                 
             _, group_counts_batch = split_by_group(data, target, group, self.num_groups, return_counts=1)
             '''
-            g_B: torch.Tensor=所有样本梯度相加/样本量
-            g_B_k: list, 每个元素是 torch.Tensor=每个组的累加梯度/该组的样本数
-            bar_g_B: torch.Tensor=裁剪后的样本梯度相加/样本量 
-            bar_g_B_k: list, 每个元素是 torch.Tensor=每个组裁剪后的累加梯度/该组的样本数
+                g_B: torch.Tensor=所有样本梯度相加/样本量
+                g_B_k: list, 每个元素是 torch.Tensor=每个组的累加梯度/该组的样本数
+                bar_g_B: torch.Tensor=裁剪后的样本梯度相加/样本量 
+                bar_g_B_k: list, 每个元素是 torch.Tensor=每个组裁剪后的累加梯度/该组的样本数
             '''
             g_B, g_B_k, bar_g_B, bar_g_B_k = self.mean_grads_over(group_counts_batch, sum_grad_vec_batch,
                                                                   sum_clip_grad_vec_batch)
+            
             ########entire training dataset##########
             if (self.evaluate_angles or self.evaluate_hessian) and (
                     self.epoch * self.num_batch + _batch_idx) % self.angle_comp_step == 0:
@@ -128,7 +138,7 @@ class BaseTrainer:
                 if self.method == "regular":
                     sum_grad_vec_all, sum_clip_grad_vec_all, group_counts = self.get_sum_grad(
                         self.train_loader.dataset, criterion, g_B, bar_g_B, expected_loss, _batch_idx)
-                elif self.method in ["dpsgd", "dpsgdf", "dpsgdg", "dpsgdga", "dpsgdfga"]:
+                elif self.method in ["dpsgd", "dpsgdf", "dpsgdg", "dpsgdga", "dpsgds"]:
                     sum_grad_vec_all, sum_clip_grad_vec_all, group_counts = self.get_sum_grad(self.train_loader.dataset,
                                                                                               criterion,
                                                                                               g_B,
@@ -153,40 +163,30 @@ class BaseTrainer:
                     group_max_grads[i] = max(group_max_grads[i], max(grad_norms[i]))
                     g_B_k_norms[i].append(torch.linalg.norm(g_B_k[i]).item())
                     bar_g_B_k_norms[i].append(torch.linalg.norm(bar_g_B_k[i]).item())
-                    # if isinstance(sum_g_D_k[i], int):
-                    #     sum_g_D_k[i] = g_B_k[i] * group_counts_batch[i]
-                    #     sum_bar_g_D_k[i] = bar_g_B_k[i] * group_counts_batch[i]
-                    # else:
-                    #     sum_g_D_k[i] += g_B_k[i] * group_counts_batch[i]
-                    #     sum_bar_g_D_k[i] += bar_g_B_k[i] * group_counts_batch[i]
             g_B_norms.append(torch.linalg.norm(g_B).item())
             bar_g_B_norms.append(torch.linalg.norm(bar_g_B).item())
-            # if _batch_idx == 0:
-            #     g_D = g_B
-            #     bar_g_D = bar_g_B
-            # else:
-            #     g_D += g_B
-            #     bar_g_D += bar_g_B
 
-            if self.method == "dpsgdf":
+            if self.method in ["dpsgdf", "dpsgds"]:
                 self.optimizer.step(C)
+                Ck_B_floats = [float(v) for v in Ck_B.values()]
+                all_Ck.append(Ck_B_floats)
             elif self.method == "dpsgdg":
                 self.optimizer.step(self.strict_max_grad_norm)
-            elif self.method == "dpsgdfg":
-                self.optimizer.step(C, self.strict_max_grad_norm)
+            # elif self.method == "dpsgdfg":
+            #     self.optimizer.step(C, self.strict_max_grad_norm)
+            # elif self.method == "dpsgdfga":
+            #     next_Z = self._update_Z(per_sample_grads, self.strict_max_grad_norm)
+            #     self.optimizer.step(C, self.strict_max_grad_norm)
+            #     self.strict_max_grad_norm = next_Z
             elif self.method == "dpsgdga":
                 next_Z = self._update_Z(per_sample_grads, self.strict_max_grad_norm)
                 self.optimizer.step(self.strict_max_grad_norm)
-                self.strict_max_grad_norm = next_Z
-            elif self.method == "dpsgdfga":
-                next_Z = self._update_Z(per_sample_grads, self.strict_max_grad_norm)
-                self.optimizer.step(C, self.strict_max_grad_norm)
                 self.strict_max_grad_norm = next_Z
             else:
                 self.optimizer.step()
             losses.append(loss.item())
         if self.method != "regular":
-            if self.method in ["dpsgdf", "dpsgdfg", "dpsgdga", "dpsgdfga"]:
+            if self.method in ["dpsgdf", "dpsgds", "dpsgdga"]:
                 self._update_privacy_accountant()
             epsilon = self.privacy_engine.get_epsilon(delta=self.delta)
             #print(f"(ε = {epsilon:.2f}, δ = {self.delta})")
@@ -196,19 +196,20 @@ class BaseTrainer:
         #print(f"group_ave_grad_norms:{group_ave_grad_norms}")
         group_norm_grad_ave = [np.mean(g_B_norms)] + [np.mean(g_B_k_norms[i]) for i in range(self.num_groups)]
         group_norm_clip_grad_ave = [np.mean(bar_g_B_norms)] + [np.mean(bar_g_B_k_norms[i]) for i in range(self.num_groups)]
-        # 计算夹角（单位：度）
         # group_angle = [cosine_similarity(sum_g_D_k[i].unsqueeze(0), g_D.unsqueeze(0)).item() for i in range(self.num_groups)]
         # group_clip_angle = [cosine_similarity(sum_bar_g_D_k[i].unsqueeze(0), bar_g_D.unsqueeze(0)).item() for i in range(self.num_groups)]
         group_angle = []
         group_clip_angle = []
         return group_ave_grad_norms, group_ave_clip_grad_norms, group_max_grads, \
-                group_norm_grad_ave, group_norm_clip_grad_ave, group_angle, group_clip_angle, losses, losses_per_group / self.num_batch
+                group_norm_grad_ave, group_norm_clip_grad_ave,  \
+                    group_angle, group_clip_angle, losses, losses_per_group / self.num_batch, all_Ck
 
 
     def train(self):
         training_time = 0
         group_acc_epochs = []
         group_loss_epochs = []
+        group_Ck_batchs = []
         cos_sim_per_epoch = []
         expected_loss = []
         avg_grad_norms_epochs = []
@@ -232,7 +233,7 @@ class BaseTrainer:
             #     group_acc_epochs.append([-1, acc_per_epoch] + list(group_acc_per_epoch))
 
             avg_grad_norms, avg_clip_grad_norms, max_grads, norm_avg_grad, norm_clip_avg_grad, \
-                group_angle, group_clip_angle, losses, group_losses = self._train_epoch(cos_sim_per_epoch,
+                group_angle, group_clip_angle, losses, group_losses, all_Ck = self._train_epoch(cos_sim_per_epoch,
                                                                                         expected_loss,
                                                                                         self.train_loader)
             #compute acc
@@ -248,6 +249,7 @@ class BaseTrainer:
             max_grads_epochs.append([self.epoch] + list(max_grads))
             norm_avg_grad_epochs.append([self.epoch] + list(norm_avg_grad))
             norm_clip_avg_grad_epochs.append([self.epoch] + list(norm_clip_avg_grad))
+            group_Ck_batchs += all_Ck
             # group_angle_epochs.append([self.epoch] + list(group_angle))
             # group_clip_angle_epochs.append([self.epoch] + list(group_clip_angle))
 
@@ -284,6 +286,11 @@ class BaseTrainer:
         # self.create_csv(norm_avg_grad_epochs, columns, "norm_avg_grad_per_epochs")
         # columns = ["epoch", "norm_clip_avg_grad"] + [f"norm_clip_avg_grad_{k}" for k in range(K)]
         # self.create_csv(norm_clip_avg_grad_epochs, columns, "norm_clip_avg_grad_per_epochs")
+        # if self.method in ["dpsgdf", "dpsgds"]:
+        #     columns = [f"clipping_bound_{k}" for k in range(K)]
+        #     self.create_csv(group_Ck_batchs, columns, "clipping_bound_per_batch")
+
+
         # # write angle to csv
         # columns = ["epoch"] + [f"group_angle_{k}" for k in range(K)]
         # self.create_csv(group_angle_epochs, columns, "group_angle_per_epochs")
@@ -489,7 +496,7 @@ class BaseTrainer:
         # First argument is a dummy
         _, group_counts = split_by_group(dataset.y, dataset.y, dataset.z, self.num_groups, return_counts=True)
         for data, target, group in loader:
-            if self.method == "dpsgdf":
+            if self.method == "dpsgdf" or self.method == "dpsgds":
                 _, _, sum_grad_vec_batch, sum_clip_grad_vec_batch = self.get_sum_grad_batch(
                     data, target, group, criterion, **kwargs)
             else:
@@ -607,8 +614,8 @@ class DpsgdFTrainer(BaseTrainer):
     """Class for DPSGD-F training"""
 
     # given norm of gradient, computes S such that clipped gradient = S * gradient
-    def clipping_scale_fn(self, grad_norm, idx, clipping_bounds):
-        #clipping_bounds = kwargs["clipping_bounds"]
+    def clipping_scale_fn(self, grad_norm, idx, **kwargs):
+        clipping_bounds = kwargs["clipping_bounds"]
         return min((clipping_bounds[idx] / (grad_norm + 1e-6)).item(), 1)
 
     def __init__(
@@ -670,6 +677,115 @@ class DpsgdFTrainer(BaseTrainer):
         self.privacy_step_history = []
 
     def compute_clipping_bound_per_sample(self, per_sample_grads, group):
+        """compute clipping bound for each sample """
+        # calculate mk, ok
+        mk = collections.defaultdict(int)
+        ok = collections.defaultdict(int)
+        # get the l2 norm of gradients of all parameters for each sample, in shape of (batch_size, )
+        l2_norm_grad_per_sample = torch.norm(per_sample_grads, p=2, dim=1)  # batch_size
+
+        assert len(group) == len(l2_norm_grad_per_sample)
+
+        for i in range(len(group)):  # looping over batch
+            group_idx = group[i].item()
+            if l2_norm_grad_per_sample[i].item() > self.base_max_grad_norm:
+                mk[group_idx] += 1
+            else:
+                ok[group_idx] += 1
+
+        # add noise scale to mk and ok
+        m2k = {}
+        o2k = {}
+        m = 0
+
+        # note that some group idx might have 0 sample counts in the batch and we are still adding noise to it
+        for group_idx in range(self.num_groups):
+            m2k[group_idx] = mk[group_idx] + torch.normal(0, self.counts_noise_multiplier, (1,)).item()
+            m2k[group_idx] = max(int(m2k[group_idx]), 0)
+            o2k[group_idx] = ok[group_idx] + torch.normal(0, self.counts_noise_multiplier, (1,)).item()
+            o2k[group_idx] = max(int(o2k[group_idx]), 0)
+            m += m2k[group_idx]
+
+        # Account for privacy cost of privately estimating group sizes
+        # using the built in sampled-gaussian-mechanism accountant.
+        # L2 sensitivity of per-group counts vector is always 1,
+        # so std use in torch.normal is the same as noise_multiplier in accountant.
+        # Accounting is done lazily, see _update_privacy_accountant method.
+        self.privacy_step_history.append([self.counts_noise_multiplier, self.sample_rate])
+        array = []
+        bk = {}
+        Ck = {}
+        for group_idx in range(self.num_groups):
+            bk[group_idx] = m2k[group_idx] + o2k[group_idx]
+            # added
+            if bk[group_idx] == 0:
+                array.append(1)  # when bk = 0, m2k = 0, we have 0/0 = 1
+            else:
+                array.append(m2k[group_idx] * 1.0 / bk[group_idx])
+
+        for group_idx in range(self.num_groups):
+            Ck[group_idx] = self.base_max_grad_norm * (1 + array[group_idx] / (np.mean(array) + 1e-8))
+
+        per_sample_clipping_bound = []
+        for i in range(len(group)):  # looping over batch
+            group_idx = group[i].item()
+            per_sample_clipping_bound.append(Ck[group_idx])
+
+        return torch.Tensor(per_sample_clipping_bound).to(device=self.device), Ck
+
+
+class DpsgdSTrainer(BaseTrainer):
+    """Class for DPSGD-S training"""
+
+    # given norm of gradient, computes S such that clipped gradient = S * gradient
+    def clipping_scale_fn(self, grad_norm, idx, clipping_bounds):
+        #clipping_bounds = kwargs["clipping_bounds"]
+        return min((clipping_bounds[idx] / (grad_norm + 1e-6)).item(), 1)
+
+    def __init__(
+            self,
+            model,
+            optimizer,
+            privacy_engine,
+            train_loader,
+            device,
+            logdir,
+            delta=1e-5,
+            base_max_grad_norm=1,  # C0
+            counts_noise_multiplier=10,  # noise multiplier applied on mk and ok
+            scale=2,
+            **kwargs
+    ):
+        super().__init__(
+            model,
+            optimizer,
+            train_loader,
+            device,
+            logdir,
+            **kwargs
+        )
+
+        self.privacy_engine = privacy_engine
+        self.delta = delta
+        # new parameters for DPSGDS
+        self.base_max_grad_norm = base_max_grad_norm  # C0
+        self.counts_noise_multiplier = counts_noise_multiplier  # noise scale applied on mk and ok
+        self.scale = scale
+        self.sample_rate = 1 / self.num_batch
+        self.privacy_step_history = []
+
+    def _update_privacy_accountant(self):
+        """
+        The Opacus RDP accountant minimizes computation when many SGM steps are taken in a row with the same parameters.
+        We alternate between privatizing counts, and gradients with different parameters.
+        Accounting is sped up by tracking steps in groups rather than alternating.
+        The order of accounting does not affect the privacy guarantee.
+        """
+        for step in self.privacy_step_history:
+            self.privacy_engine.accountant.step(noise_multiplier=step[0], sample_rate=step[1])
+        self.privacy_step_history = []
+
+    def compute_clipping_bound_per_sample(self, per_sample_grads, group):
         """compute clipping bound for each group """
         # Calculate group-specific scaling factor
         group_norms = {}  # Store group-wise L2 norms
@@ -677,7 +793,7 @@ class DpsgdFTrainer(BaseTrainer):
             group_grads = per_sample_grads[group == group_idx]  # Get gradients for each group
             # group_norms[group_idx] = torch.mean(torch.norm(group_grads, p=2, dim=1))  # Average L2 norm
             if group_grads.size(0) > 0: 
-                summed_group_grads = group_grads.sum(dim=0) 
+                summed_group_grads = group_grads.sum(dim=0) + torch.normal(0, self.counts_noise_multiplier, (1,)).item()
                 avg_group_grads = summed_group_grads / group_grads.size(0)  
                 group_norms[group_idx] = torch.norm(avg_group_grads, p=2)  # Average L2 norm
             else:
@@ -686,12 +802,19 @@ class DpsgdFTrainer(BaseTrainer):
         # Normalize clipping bounds based on the group's gradient norms
         Ck = {}
         # avg_norm = torch.mean(torch.norm(per_sample_grads, p=2, dim=1)) 
-        avg_grads = torch.mean(group_grads, dim=0)
+        avg_grads = torch.mean(group_grads, dim=0) + torch.normal(0, self.counts_noise_multiplier, (1,)).item()
         avg_norm = torch.norm(avg_grads, p=2)
+        # Account for privacy cost of privately estimating the sum of group grad
+        # using the built in sampled-gaussian-mechanism accountant.
+        # L2 sensitivity of per-group sum vector is always 1,
+        # so std use in torch.normal is the same as noise_multiplier in accountant.
+        # Accounting is done lazily, see _update_privacy_accountant method.
+        self.privacy_step_history.append([self.counts_noise_multiplier, self.sample_rate])
 
         for group_idx in range(self.num_groups):
             # Scale clipping bound for each group according to its gradient norm
-            max_scale = 2
+            # max_scale = 2
+            max_scale = self.scale
             scale = min(max_scale, avg_norm / group_norms[group_idx])
             # Ck[group_idx] = min(0.5, self.base_max_grad_norm * scale)
             Ck[group_idx] = self.base_max_grad_norm * scale
@@ -705,7 +828,8 @@ class DpsgdFTrainer(BaseTrainer):
             per_sample_clipping_bound.append(Ck[group_idx])
 
         # Return per-sample clipping bounds
-        return torch.Tensor(per_sample_clipping_bound).to(device=self.device)
+        return torch.Tensor(per_sample_clipping_bound).to(device=self.device), Ck
+
 
 class DpsgdGlobalTrainer(DpsgdTrainer):
 
@@ -738,111 +862,6 @@ class DpsgdGlobalTrainer(DpsgdTrainer):
             **kwargs
         )
         self.strict_max_grad_norm = strict_max_grad_norm
-
-class DpsgdFGlobalTrainer(BaseTrainer):
-    """Class for DPSGD-FGlobal training"""
-
-    # given norm of gradient, computes S such that clipped gradient = S * gradient
-    def clipping_scale_fn(self, grad_norm, idx, clipping_bounds):
-        if grad_norm > self.strict_max_grad_norm:
-            return 0
-        else:
-            return clipping_bounds[idx] / self.strict_max_grad_norm
-
-    def __init__(
-            self,
-            model,
-            optimizer,
-            privacy_engine,
-            train_loader,
-            device,
-            logdir,
-            delta=1e-5,
-            strict_max_grad_norm=100,
-            base_max_grad_norm=1,  # C0
-            counts_noise_multiplier=10,  # noise multiplier applied on mk and ok
-            **kwargs
-    ):
-        """
-        Initialization function. Initialize parent class while adding new parameter clipping_bound and noise_scale.
-
-        Args:
-            model: model from privacy_engine.make_private()
-            optimizer: a DPSGDF_Optimizer
-            privacy_engine: DPSGDF_Engine
-            train_loader: train_loader from privacy_engine.make_private()
-            valid_loader: normal pytorch data loader for validation set
-            test_loader: normal pytorch data loader for test set
-            writer: writer to tensorboard
-            evaluator: evaluate for model performance
-            device: device to train the model
-            delta: definition in privacy budget
-            clipping_bound: C0 in the original paper, defines the threshold of gradients
-            counts_noise_multiplier: sigma1 in the original paper, defines noise added to the number of samples with gradient bigger than clipping_bound C0
-        """
-        super().__init__(
-            model,
-            optimizer,
-            train_loader,
-            device,
-            logdir,
-            **kwargs
-        )
-
-        self.privacy_engine = privacy_engine
-        self.delta = delta
-        # new parameters for DPSGDFGlobal
-        self.strict_max_grad_norm = strict_max_grad_norm
-        self.base_max_grad_norm = base_max_grad_norm  # C0
-        self.counts_noise_multiplier = counts_noise_multiplier  # noise scale applied on mk and ok
-        self.sample_rate = 1 / self.num_batch
-        self.privacy_step_history = []
-
-    def _update_privacy_accountant(self):
-        """
-        The Opacus RDP accountant minimizes computation when many SGM steps are taken in a row with the same parameters.
-        We alternate between privatizing counts, and gradients with different parameters.
-        Accounting is sped up by tracking steps in groups rather than alternating.
-        The order of accounting does not affect the privacy guarantee.
-        """
-        for step in self.privacy_step_history:
-            self.privacy_engine.accountant.step(noise_multiplier=step[0], sample_rate=step[1])
-        self.privacy_step_history = []
-
-    def compute_clipping_bound_per_sample(self, per_sample_grads, group):
-        """compute clipping bound for each group """
-        # Calculate group-specific scaling factor
-        group_norms = {}  # Store group-wise L2 norms
-        for group_idx in range(self.num_groups):
-            group_grads = per_sample_grads[group == group_idx]  # Get gradients for each group
-            if group_grads.size(0) > 0: 
-                summed_group_grads = group_grads.sum(dim=0) 
-                avg_group_grads = summed_group_grads / group_grads.size(0)  
-                group_norms[group_idx] = torch.norm(avg_group_grads, p=2)  # Average L2 norm
-            else:
-                group_norms[group_idx] = 1e-8
-
-        # Normalize clipping bounds based on the group's gradient norms
-        Ck = {}
-        avg_grads = torch.mean(group_grads, dim=0)
-        avg_norm = torch.norm(avg_grads, p=2)
-
-        for group_idx in range(self.num_groups):
-            # Scale clipping bound for each group according to its gradient norm
-            scale = min(1, avg_norm / group_norms[group_idx])
-            Ck[group_idx] = self.base_max_grad_norm * scale
-            #Ck[group_idx] = self.base_max_grad_norm * (1 + (avg_group_norm / group_norms[group_idx]) ** alpha)
-
-        # Calculate final clipping bounds for each sample based on group
-        per_sample_clipping_bound = []
-        for i in range(len(group)):  # Looping over batch
-            group_idx = group[i].item()
-            # Adjust the clipping bound for each sample
-            per_sample_clipping_bound.append(Ck[group_idx])
-
-        # Return per-sample clipping bounds
-        return torch.Tensor(per_sample_clipping_bound).to(device=self.device)
-
 
 class DpsgdGlobalAdaptiveTrainer(BaseTrainer):
 
@@ -915,114 +934,3 @@ class DpsgdGlobalAdaptiveTrainer(BaseTrainer):
 
         self.privacy_step_history.append([self.bits_noise_multiplier, self.sample_rate])
         return next_Z
-
-class DpsgdF_GlobalAdaptiveTrainer(BaseTrainer):
-
-    # given norm of gradient, computes S such that clipped gradient = S * gradient
-    def clipping_scale_fn(self, grad_norm, idx, clipping_bounds):
-        if grad_norm > self.strict_max_grad_norm:
-            return min(1, clipping_bounds[idx] / (grad_norm + 1e-6))
-        else:
-            return clipping_bounds[idx] / self.strict_max_grad_norm
-
-    def __init__(
-            self,
-            model,
-            optimizer,
-            privacy_engine,
-            train_loader,
-            device,
-            logdir,
-            delta=1e-5,
-            base_max_grad_norm=1,  # C0
-            strict_max_grad_norm=100,
-            bits_noise_multiplier=10,
-            counts_noise_multiplier=10,  # noise multiplier applied on mk and ok
-            lr_Z=0.01,
-            threshold=1.0,
-            **kwargs
-    ):
-        super().__init__(
-            model,
-            optimizer,
-            train_loader,
-            device,
-            logdir,
-            **kwargs
-        )
-        self.privacy_engine = privacy_engine
-        self.delta = delta
-        self.base_max_grad_norm = base_max_grad_norm  # Z
-        self.strict_max_grad_norm = strict_max_grad_norm  # Z
-        self.bits_noise_multiplier = bits_noise_multiplier
-        self.counts_noise_multiplier = counts_noise_multiplier  # noise scale applied on mk and ok
-        self.lr_Z = lr_Z
-        self.sample_rate = 1 / self.num_batch
-        self.privacy_step_history = []
-        self.threshold = threshold
-
-    def _update_privacy_accountant(self):
-        """
-        The Opacus RDP accountant minimizes computation when many SGM steps are taken in a row with the same parameters.
-        We alternate between privatizing counts, and gradients with different parameters.
-        Accounting is sped up by tracking steps in groups rather than alternating.
-        The order of accounting does not affect the privacy guarantee.
-        """
-        for step in self.privacy_step_history:
-            self.privacy_engine.accountant.step(noise_multiplier=step[0], sample_rate=step[1])
-        self.privacy_step_history = []
-
-    def _update_Z(self, per_sample_grads, Z):
-        # get the l2 norm of gradients of all parameters for each sample, in shape of (batch_size, )
-        l2_norm_grad_per_sample = torch.norm(per_sample_grads, p=2, dim=1)
-        batch_size = len(l2_norm_grad_per_sample)
-
-        dt = 0  # sample count in a batch exceeding Z * threshold
-        for i in range(batch_size):  # looping over batch
-            if l2_norm_grad_per_sample[i].item() > self.threshold * Z:
-                dt += 1
-
-        dt = dt * 1.0 / batch_size  # percentage of samples in a batch that's bigger than the threshold * Z
-        noisy_dt = dt + torch.normal(0, self.bits_noise_multiplier, (1,)).item() * 1.0 / batch_size
-
-        factor = math.exp(- self.lr_Z + noisy_dt)
-
-        next_Z = Z * factor
-
-        self.privacy_step_history.append([self.bits_noise_multiplier, self.sample_rate])
-        return next_Z
-
-    def compute_clipping_bound_per_sample(self, per_sample_grads, group):
-        """compute clipping bound for each group """
-        # Calculate group-specific scaling factor
-        group_norms = {}  # Store group-wise L2 norms
-        for group_idx in range(self.num_groups):
-            group_grads = per_sample_grads[group == group_idx]  # Get gradients for each group
-            if group_grads.size(0) > 0: 
-                summed_group_grads = group_grads.sum(dim=0) 
-                avg_group_grads = summed_group_grads / group_grads.size(0)  
-                group_norms[group_idx] = torch.norm(avg_group_grads, p=2)  # Average L2 norm
-            else:
-                group_norms[group_idx] = 1e-8
-
-        # Normalize clipping bounds based on the group's gradient norms
-        Ck = {}
-        avg_grads = torch.mean(group_grads, dim=0)
-        avg_norm = torch.norm(avg_grads, p=2)
-
-        for group_idx in range(self.num_groups):
-            # Scale clipping bound for each group according to its gradient norm
-            scale = min(1, avg_norm / group_norms[group_idx])
-            Ck[group_idx] = self.base_max_grad_norm * scale
-            #Ck[group_idx] = self.base_max_grad_norm * (1 + (avg_group_norm / group_norms[group_idx]) ** alpha)
-
-        # Calculate final clipping bounds for each sample based on group
-        per_sample_clipping_bound = []
-        for i in range(len(group)):  # Looping over batch
-            group_idx = group[i].item()
-            # Adjust the clipping bound for each sample
-            per_sample_clipping_bound.append(Ck[group_idx])
-
-        # Return per-sample clipping bounds
-        return torch.Tensor(per_sample_clipping_bound).to(device=self.device)
-

@@ -26,9 +26,9 @@ from util import (
 torch.backends.cudnn.benchmark = True
 
 def main(device, method, num_rep=1, scale=None):
-    # configs = f"configs/raceface/raceface_{method}.yaml"
+    configs = f"configs/raceface/raceface_{method}.yaml"
     # configs = f"configs/mnist/mnist_{method}.yaml"
-    configs = f"configs/tabular/adult/adult_{method}.yaml"
+    # configs = f"configs/tabular/law/law_{method}.yaml"
     with open(configs, "rb") as f:
         configs = yaml.load(f, Loader=yaml.Loader)
 
@@ -38,6 +38,7 @@ def main(device, method, num_rep=1, scale=None):
     configs["audit"]["device"] = device
     if scale is not None:
         method = f"{method}_{scale}"
+        configs["train"]["scale"] = scale
 
     # Initialize seeds for reproducibility
     np.random.seed(configs["run"]["random_seed"])
@@ -99,8 +100,8 @@ def main(device, method, num_rep=1, scale=None):
     )
 
 if __name__ == "__main__":
-    method = "dpsgd"
-    device = "cuda:5"
-    num_rep = 1 
-    # scale = 4
+    method = "regular"
+    device = "cuda:6"
+    num_rep = 5
+    scale = 2
     main(device, method, num_rep)

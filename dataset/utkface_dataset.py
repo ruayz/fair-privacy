@@ -24,7 +24,13 @@ class UTKDataset(Dataset):
         # get the gender, and ethnicity label arrays
         # self.gender_label = np.array(dataFrame.gender[:])
         # self.eth_label = np.array(dataFrame.ethnicity[:])
-        self.targets = np.array(dataFrame[label_name][:])
+        if label_name == "gender":
+            self.targets = np.array(dataFrame.gender[:])
+            self.groups = np.array(dataFrame.ethnicity[:])
+            # self.groups = np.where(dataFrame.ethnicity[:] == 0, 0, 1)
+        else:
+            self.targets = np.array(dataFrame.ethnicity[:])
+            self.groups = np.array(dataFrame.gender[:])
     
     # override the length function
     def __len__(self):
@@ -38,7 +44,8 @@ class UTKDataset(Dataset):
         
         # load the labels into a list and convert to tensors
         target = torch.tensor(self.targets[index])
+        group = torch.tensor(self.groups[index])
         
         # return data labels
-        return data, target
+        return data, target, group
      

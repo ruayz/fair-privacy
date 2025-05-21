@@ -7,7 +7,7 @@ from typing import Optional, Callable
 import torch
 import opacus
 from opacus.optimizers.optimizer import DPOptimizer, _generate_noise, _check_processed_flag, _mark_as_processed
-# from opacus.optimizers.optimizer import _get_flat_grad_sample
+#from opacus.optimizers.optimizer import _get_flat_grad_sample
 from torch.optim import Optimizer
 
 

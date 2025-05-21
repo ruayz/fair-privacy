@@ -7,7 +7,7 @@ run: # Configurations for a specific run
 audit: # Configurations for auditing
   privacy_game: privacy_loss_model # Indicate the privacy game from privacy_loss_model
   algorithm: LOSS # String for indicating the membership inference attack. We currently support the RMIA introduced by Zarifzadeh et al. 2024(https://openreview.net/pdf?id=sT7UJh5CTc)) and the LOSS attacks
-  num_ref_models: 199 # Number of reference models used to audit each target model
+  num_models: 400 # Number of reference models used to audit each target model
   device: cuda:8 # String for indicating the device we want to use for inferring signals and auditing models
   report_log: report # String that indicates the folder where we save the log and auditing report
   batch_size: 5000 # Integer number for indicating batch size for evaluating models and inferring signals.
@@ -20,7 +20,7 @@ train: # Configuration for training
   batch_size: 256
   learning_rate: 0.1
   weight_decay: 0
-  epochs: 50
+  epochs: 20
   optimizer: SGD
    # train method
   method: dpsgd

@@ -71,7 +71,8 @@ def main(device, num_ref_models, dataset_idx=None, wish_model_nums=None):
 
     # Define experiment parameters
     num_experiments = configs["run"]["num_experiments"]
-    num_reference_models = configs["audit"]["num_ref_models"]
+    num_models = configs["audit"]["num_models"]
+    num_reference_models = int(num_models/2 - 1)
     num_model_pairs = max(math.ceil(num_experiments / 2.0), num_reference_models + 1)
 
     # Load or train models
@@ -107,7 +108,7 @@ def main(device, num_ref_models, dataset_idx=None, wish_model_nums=None):
             local_path =  f"{directories["subdata_dir"]}data/data_{dataset_idx}/model_{model_num}"
             Path(local_path).mkdir(parents=True, exist_ok=True)
 
-            # shape of mia_score_list: (n, m) n=(num_reference_models+1)*2, m=len(auditing_dataset)
+            # shape of mia_score_list: (n, m) n=(num_models, m=len(auditing_dataset)
             mia_score_list, membership_list = audit_records(
                     local_path,
                     target_model_indices,
@@ -133,16 +134,11 @@ def main(device, num_ref_models, dataset_idx=None, wish_model_nums=None):
         )
     
 if __name__ == "__main__":
-    # log_dir = 'exp/demo_mnist/'
-    # sample_idx = pd.read_csv(f"{log_dir}sample_idx.txt", sep=',')
-
-    dataset_idx = [7569]
+    log_dir = 'exp/demo_mnist_compare/'
+    dataset_idxs = pd.read_csv(f"{log_dir}sample_idx.txt", sep=',')
+    
     device = "cuda:2"
     num_ref_models = 299
     wish_model_nums = [100]
-    for i in range(len(dataset_idx)):
+    for i in range(len(dataset_idxs)):
         main(device, num_ref_models, dataset_idx[i])
-
-    # device = "cuda:8"
-    # num_ref_models = 49
-    # main(device, num_ref_models)

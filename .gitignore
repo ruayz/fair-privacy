@@ -2,5 +2,5 @@
 __pycache__/
 data/
 demo*/
-exp_*/
+exp*/
 runs*/
